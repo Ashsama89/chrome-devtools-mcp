@@ -4,14 +4,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type * as CdpProtocol from '../node_modules/chrome-devtools-frontend/front_end/generated/protocol-proxy-api.js';
+import {IssuesManager, Issue} from '../node_modules/chrome-devtools-frontend/mcp/mcp.js';
+
 import {
   type Browser,
   type Frame,
   type Handler,
   type HTTPRequest,
   type Page,
-  type PageEvents,
+  type PageEvents as PuppeteerPageEvents,
 } from './third_party/index.js';
+
+interface PageEvents extends PuppeteerPageEvents {
+  issue: Issue.Issue;
+}
 
 export type ListenerMap<EventMap extends PageEvents = PageEvents> = {
   [K in keyof EventMap]?: (event: EventMap[K]) => void;
@@ -58,7 +65,7 @@ export class PageCollector<T> {
   async init() {
     const pages = await this.#browser.pages();
     for (const page of pages) {
-      this.#initializePage(page);
+      await this.addPage(page);
     }
 
     this.#browser.on('targetcreated', async target => {
@@ -66,7 +73,7 @@ export class PageCollector<T> {
       if (!page) {
         return;
       }
-      this.#initializePage(page);
+      await this.addPage(page);
     });
     this.#browser.on('targetdestroyed', async target => {
       const page = await target.page();
@@ -77,15 +84,15 @@ export class PageCollector<T> {
     });
   }
 
-  public addPage(page: Page) {
-    this.#initializePage(page);
-  }
-
-  #initializePage(page: Page) {
+  public async addPage(page: Page) {
     if (this.storage.has(page)) {
       return;
     }
+    await this.#initializePage(page);
+  }
 
+  async #initializePage(page: Page) {
+    await this.subscribeForIssues(page);
     const idGenerator = createIdGenerator();
     const storedLists: Array<Array<WithSymbolId<T>>> = [[]];
     this.storage.set(page, storedLists);
@@ -111,6 +118,19 @@ export class PageCollector<T> {
     }
 
     this.#listeners.set(page, listeners);
+  }
+
+  protected async subscribeForIssues(page: Page) {
+    const session = await page.createCDPSession();
+     session.on('Audits.issueAdded',(data) => { // TODO unsubscribe
+      // @ts-expect-error Types of protocol from Puppeteer and CDP are incopatible for Issues
+        const issue = IssuesManager.createIssuesFromProtocolIssue(null, data.issue)[0]; // returns issue wrapped in array, need to get first element
+        if (!issue) {
+          return;
+        }
+        page.emit('issue', issue);
+    });
+    await session.send('Audits.enable');
   }
 
   protected splitAfterNavigation(page: Page) {
