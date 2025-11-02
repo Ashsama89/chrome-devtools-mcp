@@ -1,4 +1,4 @@
-## Quick goal for AI coding agents
+Invoke-WebRequest -Uri "https://repo.anaconda.com/archive/Anaconda3-2025.06-0-Windows-x86_64.exe" -outfile ".\Downloads\Anaconda3-2025.06-0-Windows-x86_64.exe"## Quick goal for AI coding agents
 
 Help contributors rapidly understand, modify, and extend the Chrome DevTools MCP
 server. Prioritize code that touches the MCP tool surface (src/tools/), build/test
